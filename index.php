@@ -80,6 +80,7 @@
                 <aside style="z-index:1000;">
                     <h3>Color Toggler</h3>
                     <p>Adjust the following settings to paint your bicycle!  The following colors are sourced from the RAL pallette.</p>
+                    <p><span onclick="PurgeCanvas(canvas)">Purge Canvas</span></p>
                     <div style="margin:auto;padding:20px;display:inline">Select Bike: <select id="select_bike"></select></div>
                     <div id='toggler'></div>
                     <div style="margin:auto;width:100px;padding:20px"><a href="#"  onclick="SaveScheme()" class="bigButton">Save</a></div>
@@ -173,7 +174,9 @@
                                 echo 'svgs_'.$bikeDirIdx.' = '; //prep imgs array
                                 echoln(json_encode($s).';');
                             }
-                            echoln('var imgs_'.$bikeDirIdx.' = {svgs: svgs_'.$bikeDirIdx.', pngs: pngs_'.$bikeDirIdx.'};');
+                            echo('var imgs_'.$bikeDirIdx.' = {svgs: svgs_'.$bikeDirIdx);
+                                if($p) echoln(', pngs: pngs_'.$bikeDirIdx.'};');
+                                else echoln('};');
                             echoln('$("#select_bike").append( $(new Option( "'.ucfirst(str_replace("_", " ", $bikeDirIdx)).'", "'.$bikeDirIdx.'")).attr("id","option_'.$bikeDirIdx.'") );');
                         }
                         echoln($bike_imgs.'.'.$bikeDirIdx.' = imgs_'.$bikeDirIdx.';');
@@ -190,7 +193,7 @@
             //Build intial canvas, default to twin-style
             //Setup bike type changing binding
             $('#select_bike').change(function(){
-                LoadNewBike();
+                LoadNewBike(null,LoadNewBike2);
             });
 
             //Initialize canvas
@@ -205,11 +208,17 @@
 
 
 
-        function LoadNewBike(colors){
+        function LoadNewBike(colors,callback){
             colors = colors || null;
             $("#toggler > *").remove();
             PurgeCanvas(canvas);
-            $(document).ready( RenderAllBikeImgs(eval('bike_imgs.'+$("#select_bike").val() ) ,canvas,colors) ); //adds images, svgs auto-generate selectors
+            callback(colors);
+        }
+
+
+
+        function LoadNewBike2(colors){
+           RenderAllBikeImgs(eval('bike_imgs.'+$("#select_bike").val() ) ,canvas,colors); //adds images, svgs auto-generate selectors
         }
 
 
@@ -217,14 +226,19 @@
         function RenderAllBikeImgs(img_lib,cv,colors){
             //render svgs (must be added first!)
             if(colors) var comps_to_color = Object.keys(colors).sort();
-            for (var i = img_lib.svgs.length - 1; i >= 0; i--) {
-                if(colors) $(document).ready( addSvg( GetImageCaptionMatch(img_lib.svgs,comps_to_color[i]), cv, colors[comps_to_color[i]] ) ); //DoAfterAll to ensure that alphabetical adds are honored
-                else $(document).ready( addSvg(img_lib.svgs[i], cv) );
-            };
+            if(img_lib.svgs){
+                for (var i = img_lib.svgs.length - 1; i >= 0; i--) {
+                    if(colors) $(document).ready( addSvg( GetImageCaptionMatch(img_lib.svgs,comps_to_color[i]), cv, colors[comps_to_color[i]], StrokeSVG ) ); //DoAfterAll to ensure that alphabetical adds are honored
+                    else $(document).ready( addSvg(img_lib.svgs[i], cv, null, StrokeSVG) );
+                };
+            }
+
             //render pngs
-            for (var i = img_lib.pngs.length - 1; i >= 0; i--) {
-                addImg(img_lib.pngs[i],cv);
-            };
+            if(img_lib.pngs){
+                for (var i = img_lib.pngs.length - 1; i >= 0; i--) {
+                    addImg(img_lib.pngs[i],cv);
+                };
+            }
             cv.renderAll();
         }
 
@@ -238,7 +252,8 @@
         }
 
 
-        function addSvg(imgData,cv,color){
+
+        function addSvg(imgData,cv,color,callback){
             var complete = false;
             color = color || ralColors[ Math.floor((ralColors.length/3) * Math.random()) * 3 +1 ];
             fabric.loadSVGFromURL(imgData.path, function(objects, options){
@@ -250,8 +265,8 @@
                 });
                 im.set('selectable', false);
                 cv.add(im);
-                StrokeSVG(im, color ); //initial color
-                $(document).ready( addToggler(im, imgData.caption, 'toggler', cv, color) ); //add color picker
+                callback(im,color);
+                addToggler(im, imgData.caption, 'toggler', cv, color); //add color picker
             });
         }
 
@@ -404,15 +419,16 @@
         function LoadSave(id){
             var scheme = eval('(' + $('#'+id).attr('name')  + ')');
             $("#select_bike").val(scheme["bike"]);
-            LoadNewBike(scheme["colors"]); 
+            LoadNewBike(scheme["colors"],LoadNewBike2); 
         }
 
 
 
         function PurgeCanvas(canvas){
             var obs = canvas.getObjects();
-            for(var i=0; i < obs.length;i++){
-                canvas.remove(obs[i]);
+            while(obs.length){
+                canvas.remove(obs[0]);
+                obs = canvas.getObjects();
             }
         }
 
