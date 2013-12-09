@@ -1,0 +1,7 @@
+//bikeColor
+bikeColor is a tool to mock-up different bicycle color schemes.
+
+::usage
+*Add a directory to to the bike directory: bike/<bike name>.
+*Add .pngs or .svgs to the directory.
+*Open the index.php page, and select the bike.  Select your colors and enjoy!
