@@ -27,7 +27,7 @@
     </head>
 
 <?php
-    $debug = false;
+    $debug = true;
     $bike_imgs = 'bike_imgs';
     //require('../plugins/kint/Kint.class.php');
     function echoln($arg){ echo "$arg\n"; }
@@ -61,11 +61,13 @@
                         <canvas height="480" width="640" id="c"></canvas>
 
                     </header>
-                    <!--
+
                     <section>
-                        <h2>article section h2</h2>
-                        <p>Lorem ipsum</p>
+                        <h2>Error?</h2>
+                        <p id="err" onclick="canvas.renderAll()">-</p>
                     </section>
+
+                    <!--
                     <section>
                         <h2>article section h2</h2>
                         <p>Lorem ipsum</p>
@@ -104,10 +106,12 @@
         <script src="js/main.js"></script>
 
         <script>
+        /*
             var _gaq=[['_setAccount','UA-XXXXX-X'],['_trackPageview']];
             (function(d,t){var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
             g.src='//www.google-analytics.com/ga.js';
             s.parentNode.insertBefore(g,s)}(document,'script'));
+        */
         </script>
 
         <script>
@@ -116,22 +120,20 @@
                 function BuildBikeJSDataFunction(){
                     global $debug;
                     global $bike_imgs;
-                    $dirSubSiteRoot = '/bikeColor/';
                     $dirBikeFromRoot = '/img/bike/';
                     $pwd = getcwd();
                     //All bike files belong in root + img/bike/
                     echoln('function GetBikeImages(){');
-                    echoln('//'.$pwd.'/img/bike/');
+                    echoln('//debug // '.$pwd.'/img/bike/');
                     if(is_dir($pwd.'/img/bike/')) $pwd .= $dirBikeFromRoot;
                     else{
                         echo "Error!  Bike stuff not found!\n";
                         return -1;
                     }
                     $currFiles = scandir($pwd,1);
-                    if($debug) echoln("// bike dir folders: ".json_encode($currFiles));
                     $allBikeDirs = array();
                     
-                    //Get all bike dirs
+                    //Get all bike dirs, filter out files (folders have no . char)
                     $i=0;
                     foreach ($currFiles as $folderName) {
                         if(strpos($folderName, '.')===FALSE) $allBikeDirs[$folderName] = array();  //{directory: array of image filenames}
@@ -154,11 +156,11 @@
                             //keep only pngs and svgs
                             if (strpos($img, '.png')){
                                 $bike_dir[] = $img;
-                                $p[] = array('filename' => $img, 'caption' => $caption, 'name' => $name, 'path' => $dirSubSiteRoot.$dirBikeFromRoot.$bikeDirIdx.'/'.$img);
+                                $p[] = array('filename' => $img, 'caption' => $caption, 'name' => $name, 'path' => $dirBikeFromRoot.$bikeDirIdx.'/'.$img);
                             }
                             elseif (strpos($img, '.svg')) {
                                 $bike_dir[] = $img;
-                                $s[] = array('filename' => $img, 'caption' => $caption, 'name' => $name, 'path' =>  $dirSubSiteRoot.$dirBikeFromRoot.$bikeDirIdx.'/'.$img);
+                                $s[] = array('filename' => $img, 'caption' => $caption, 'name' => $name, 'path' =>  $dirBikeFromRoot.$bikeDirIdx.'/'.$img);
                             }
                         }
 
@@ -184,27 +186,59 @@
                     echoln("return $bike_imgs; }");
                 }
                 BuildBikeJSDataFunction();
-            ?>
+
+        //Initialize JS vars
+        echoln("function InitializeSingleBike(){");
+            if(isset($_GET['bike'])){
+                echoln("return (". json_encode($_GET) .");");                
+            }
+            else echoln('return false;');
+        echoln('}');
+        ?>
 
         var canvas = new fabric.Canvas('c');
         var bike_imgs = GetBikeImages();
+        var path = document.location.pathname;
+        var loc = path.substring(0, path.lastIndexOf('/'));
 
           $(function(){
+            //init vars
+            var initial_config = InitializeSingleBike();
+            var init_found = 0;
+            try{
+                //build bike
+                if(initial_config['bike']){
+                    init_found =1;
+                    var scheme = {"bike" : initial_config['bike'] };
+                    var colors = {};
+                    for(var k in initial_config){
+                        if(initial_config[k].length == 6){ colors[k.replace(/\_/g,' ')] = '#' + initial_config[k]; }
+                    };
+                    scheme["colors"] = colors;
+                    LoadSave(0,scheme);
+                }     
+            }
+            catch(e){
+            }
+        
+            //Initialize canvas if no initial config posted (Get'd)
+            if(!init_found){
+                for (var key in bike_imgs) {
+                  if (bike_imgs.hasOwnProperty(key)) {
+                    var first_img_set = bike_imgs[key];
+                    break;
+                  }
+                }
+                RenderAllBikeImgs(first_img_set,canvas); //adds images, svgs auto-generate selectors
+            }
+
             //Build intial canvas, default to twin-style
             //Setup bike type changing binding
             $('#select_bike').change(function(){
                 LoadNewBike(null,LoadNewBike2);
             });
 
-            //Initialize canvas
-            for (var key in bike_imgs) {
-              if (bike_imgs.hasOwnProperty(key)) {
-                var first_img_set = bike_imgs[key];
-                break;
-              }
-            }
-            RenderAllBikeImgs(first_img_set,canvas); //adds images, svgs auto-generate selectors
-        });
+         });
 
 
 
@@ -224,11 +258,17 @@
 
 
         function RenderAllBikeImgs(img_lib,cv,colors){
+            var t1;
+            var t2;
             //render svgs (must be added first!)
             if(colors) var comps_to_color = Object.keys(colors).sort();
             if(img_lib.svgs){
                 for (var i = img_lib.svgs.length - 1; i >= 0; i--) {
-                    if(colors) $(document).ready( addSvg( GetImageCaptionMatch(img_lib.svgs,comps_to_color[i]), cv, colors[comps_to_color[i]], StrokeSVG ) ); //DoAfterAll to ensure that alphabetical adds are honored
+                    if(colors){
+                        t1 = comps_to_color[i];
+                        t2 = GetImageCaptionMatch(img_lib.svgs, t1);
+                        addSvg( t2, cv, colors[t1], StrokeSVG ); //DoAfterAll to ensure that alphabetical adds are honored
+                    }
                     else $(document).ready( addSvg(img_lib.svgs[i], cv, null, StrokeSVG) );
                 };
             }
@@ -236,7 +276,7 @@
             //render pngs
             if(img_lib.pngs){
                 for (var i = img_lib.pngs.length - 1; i >= 0; i--) {
-                    addImg(img_lib.pngs[i],cv);
+                    addPng(img_lib.pngs[i],cv);
                 };
             }
             cv.renderAll();
@@ -256,7 +296,7 @@
         function addSvg(imgData,cv,color,callback){
             var complete = false;
             color = color || ralColors[ Math.floor((ralColors.length/3) * Math.random()) * 3 +1 ];
-            fabric.loadSVGFromURL(imgData.path, function(objects, options){
+            fabric.loadSVGFromURL(loc + imgData.path, function(objects, options){
                 var im = new fabric.util.groupSVGElements(objects, options);
                 im.set({
                   top:cv.height/2,
@@ -265,15 +305,15 @@
                 });
                 im.set('selectable', false);
                 cv.add(im);
-                callback(im,color);
                 addToggler(im, imgData.caption, 'toggler', cv, color); //add color picker
+                callback(im,color); //generally StrokeSVG
             });
         }
 
 
 
-        function addImg(imgData,cv){
-            fabric.Image.fromURL(imgData.path, function(oImg) {
+        function addPng(imgData,cv){
+            fabric.Image.fromURL(loc + imgData.path, function(oImg) {
               oImg.top = cv.height/2;
               oImg.left = cv.width/2;
               oImg.set('selectable', false);
@@ -342,6 +382,21 @@
 
         //StrokeSVG - repaints a fabric image svg, simg to be a color, 'color'. Hex, or generic (i.e. 'red') 
         function StrokeSVG(simg, color){
+            try{ simg.setFill(color); }
+            catch(err){ $('#err').text(err.message); }
+            try{
+              for (var i = 0; i < simg.paths.length; i++) {
+                simg.paths[i].setFill(color);
+              }
+            }
+            catch(err){ $('#err').text(err.message); }
+            canvas.renderAll();
+        }
+
+
+
+        //StrokeSVG - repaints a fabric image svg, simg to be a color, 'color'. Hex, or generic (i.e. 'red') 
+        function StrokeSVG_bu(simg, color){
             if (simg.isSameColor && simg.isSameColor() || !simg.paths) {
               simg.setFill(color);
             }
@@ -359,6 +414,7 @@
             $("#toggler > :input").each(function(){ full_str += $(this).val() + ","; })
             full_str = full_str.slice(0, - 1); //remove final ,
 
+            //build scheme
             var scheme = {"bike" : $("#select_bike").val() };
             var colors = {};
             $("#toggler > :input").each(function(){
@@ -370,28 +426,37 @@
             //create mini canvas
             var width=175;
             var canvas_title = "save_" + $("#saves > div").length;
+            var bconfig = JSON.stringify(scheme);
+            var uBconfig = URLize(scheme);
+            var serial_bconfig = $.param(bconfig);
             //add save button
                 //create div to house save, add save string
                     //grab screenshot of current canvas
             $("#saves").append(
                 $(document.createElement("div")).attr({"class":'saveBox',"vertical-align":"text-bottom"})
-                    .attr({"id":"div_"+canvas_title,"name":JSON.stringify(scheme)})
+                    .attr({"id":"div_"+canvas_title,"name":bconfig})
                     .append(
                         $(document.createElement("canvas")).attr({
                             "class":"mini_canvas",
                             "id":canvas_title,
                             "height":0.75*width,
-                            "width":width
+                            "width":width,
+                            "onclick":"LoadSave('div_"+canvas_title+"')"
                         })
                     )
                     .append($(document.createElement("span")).text("Load  -  \t").attr({
                         "onclick":"LoadSave('div_"+canvas_title+"')",
                         "class":"deleteLink"
                     }))
-                    .append($(document.createElement("span")).text("Delete").attr({
+                    .append($(document.createElement("span")).text("Delete  -  \t").attr({
                         "onclick":"DeleteSave('div_"+canvas_title+"')",
                         "class":"deleteLink"
                     }))
+                    .append($(document.createElement("span")).text("URL").attr({
+                        "onclick":"getURLToClipboard(\""+uBconfig +"\")",
+                        "class":"deleteLink"
+                    }))
+
             );
             fCanvas = new fabric.Canvas(canvas_title);
 
@@ -416,10 +481,13 @@
 
 
 
-        function LoadSave(id){
-            var scheme = eval('(' + $('#'+id).attr('name')  + ')');
+        function LoadSave(id,scheme){
+            scheme = scheme || 0;
+            if(!scheme){
+                scheme = eval('(' + $('#'+id).attr('name')  + ')');
+            }
             $("#select_bike").val(scheme["bike"]);
-            LoadNewBike(scheme["colors"],LoadNewBike2); 
+            LoadNewBike(scheme["colors"],LoadNewBike2);
         }
 
 
@@ -430,6 +498,37 @@
                 canvas.remove(obs[0]);
                 obs = canvas.getObjects();
             }
+        }
+
+
+
+        function getURLToClipboard(text){
+            var url_base = document.URL.replace('#','') + '?';
+            window.prompt ("Copy bike to clipboard: Ctrl+C: ", url_base+text);
+        }
+
+
+        function URLize(jsOb,firstAdded){
+            if(jsOb.length < 1) return null;
+            firstAdded = firstAdded || 0;
+            var val ='';
+            //iterate through obj, add data to str
+            for(var k in jsOb){
+                if(jsOb[k] instanceof Object){
+                    if(Object.keys(jsOb[k]).length > 0){
+                        if(firstAdded){ val += '&'; firstAdded=1; }
+                        val += k + '=obj' + URLize(jsOb[k],firstAdded);
+                    }
+                    //else do nothing on empty obj
+                }
+                else{
+                    //add key value pair to str arr
+                    if(firstAdded){ val += '&'; }
+                    val += k + '=' + jsOb[k];
+                    firstAdded=1;
+                }
+            }
+            return val.replace(/\#/g,'').replace(/\s/g,'_');
         }
 
     </script>
